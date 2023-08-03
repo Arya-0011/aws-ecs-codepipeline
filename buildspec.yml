@@ -1,0 +1,44 @@
+version: 0.2
+
+env:
+  exported-variables:
+    - AWS_DEFAULT_REGION
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws --version
+      - aws configure set aws_access_key_id xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      - aws configure set aws_secret_access_key xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      - aws configure set default.region xxxxxxxxxxxxxxxxx
+      - export AWS_DEFAULT_REGION=xxxxxxxxxxxxxxxx
+      - export REPOSITORY_URI=208440353575.dkr.ecr.xxxxxxxxxxxxx.amazonaws.com/hello-server
+      - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - export IMAGE_TAG=${COMMIT_HASH:-latest}
+
+  build:
+    commands:
+      - echo "Build started on $(date)"
+      - echo "Building the Docker image..."
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
+      - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
+
+  post_build:
+    commands:
+      - echo "Build completed on $(date)"
+      - echo "Logging in to Amazon ECR..."
+      - export AWS_ECR_LOGIN=$(aws ecr get-login-password --region $AWS_DEFAULT_REGION)
+      - echo "$AWS_ECR_LOGIN" | docker login --username AWS --password-stdin 208440353575.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo "Pushing the Docker images..."
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - docker push $REPOSITORY_URI:latest
+      - echo "Writing image definitions file..."
+      - printf '[{"name":"hello-server","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
+    - imageDetail.json
+    - appspec.yaml
+    - taskdef-prod.json
